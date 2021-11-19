@@ -92,6 +92,7 @@ int mm_init(void)
   head->ptr = NULL;
   current_avail = NULL;
   current_avail_size = 0;
+  printf("hello");
   return 0;
 
 }
@@ -113,6 +114,7 @@ void *mm_malloc(size_t size)
 
   if(head->ptr == NULL)
   {
+    //extend(size);
     /**
      * Initialize everything if the current head of the free
      * list is null. 
@@ -143,8 +145,8 @@ void *mm_malloc(size_t size)
      * Set prolog footer 
     */
     GET_ALLOC(HDRP(NEXT_BLKP(current_avail))) = 1; 
-    GET_SIZE(HDRP(NEXT_BLKP(current_avail))) = 0; // this is just to see if Github is working
-    // yes it is working
+    GET_SIZE(HDRP(NEXT_BLKP(current_avail))) = 0;
+    p = current_avail; // Save the pointer that we need to allocate
     
   }
   else{
@@ -169,10 +171,13 @@ void *mm_malloc(size_t size)
 
       }
       current_pointer = current_pointer->next;
+      p = free_block;
     }
   }
 
   extend(size); // no free blocks found, then we extend
+  set_allocated(p, newsize);
+
 
 /*
   if (current_avail_size < newsize) {
@@ -191,6 +196,15 @@ void *mm_malloc(size_t size)
 
 static void set_allocated(void *b, size_t size)
 {
+
+  size_t extra_size = GET_SIZE(HDRP(b)) - size;
+  if(extra_size > ALIGN(1 + OVERHEAD)) {
+    GET_SIZE(HDRP(b)) = size;
+    GET_SIZE(HDRP(NEXT_BLKP(b))) = extra_size;
+    GET_ALLOC(HDRP(NEXT_BLKP(b))) = 0;
+  }
+
+  GET_ALLOC(HDRP(b)) = 1;
 
 }
 
@@ -237,4 +251,7 @@ static void extend(size_t s)
  */
 void mm_free(void *ptr)
 {
+  GET_ALLOC(ptr) = 0;
+  mem_unmap(ptr);
+  
 }
