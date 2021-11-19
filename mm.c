@@ -144,6 +144,7 @@ void *mm_malloc(size_t size)
     */
     GET_ALLOC(HDRP(NEXT_BLKP(current_avail))) = 1; 
     GET_SIZE(HDRP(NEXT_BLKP(current_avail))) = 0; // this is just to see if Github is working
+    // yes it is working
     
   }
   else{
