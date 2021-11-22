@@ -49,15 +49,18 @@
 // Given a payload pointer, get the next or previous payload pointer
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE((char *)(bp)-OVERHEAD))
+#define N_FREE_POINTER(bp) ((char *)(bp) + sizeof(block_header))
+#define F_SET_PTR(p, ptr)  (*(size_t *)(p) = (size_t)(ptr))
+#define F_NEXT(ptr)      (*(char **)(N_FREE_POINTER(ptr)))
 
 // Helper functions
-static void set_allocated(void *b, size_t size);
+static void* set_allocated(void *b, size_t size);
 static void extend(size_t s);
 
 // Struct that will hold the list of pages
 typedef struct free_list
 {
-  struct free_list *next;
+  void *next;
 } free_list;
 
 struct free_list *head; // Head of the explicit free list
@@ -86,9 +89,7 @@ int mm_init(void)
   // init should just restore
   // restore the pointers
   // reset the allocator
-  //head_free_list = NULL;
-  head = NULL;
-  current_avail = NULL;
+  head_free_list = NULL;
   current_avail_size = 0;
   return 0;
 }
@@ -100,33 +101,37 @@ void *mm_malloc(size_t size)
   {
     return NULL;
   }
+  if(head_free_list == NULL)
+  {
+    extend(size);
+  }
 
+  void* current = head_free_list;
   int newsize;
   void *p; 
 
   newsize = ALIGN(size);
-  void *current_pointer = head;
-  while (current_pointer != NULL)
+  while (current != NULL)
   {
-    //void *free_block = current_pointer->ptr;
-
-    if (!GET_ALLOC(HDRP(current_pointer)) && (GET_SIZE(HDRP(current_pointer)) >= newsize))
+    if (!GET_ALLOC(HDRP(current)) && (GET_SIZE(HDRP(current)) >= newsize))
     {
-      set_allocated(current_pointer, newsize);
-      return current_avail;
-    }
-    current_pointer = current_pointer->next;
-    p = current_avail_size;
-  }
 
+      int allocation = GET_ALLOC(HDRP(current));
+      int ss = GET_SIZE(HDRP(current));
+
+      current = set_allocated(current, newsize);
+      return current;
+    }
+    //current_pointer = current_pointer->next;
+    current = F_NEXT(current);
+  }
   extend(size);
-  p = head;
   set_allocated(p, size);
 
   return p;
 }
 
-static void set_allocated(void *b, size_t size)
+static void* set_allocated(void *b, size_t size)
 {
 
   size_t extra_size = GET_SIZE(HDRP(b)) - size;
@@ -135,9 +140,10 @@ static void set_allocated(void *b, size_t size)
     GET_SIZE(HDRP(b)) = size;
     GET_SIZE(HDRP(NEXT_BLKP(b))) = extra_size;
     GET_ALLOC(HDRP(NEXT_BLKP(b))) = 0;
+    GET_SIZE(FTRP(NEXT_BLKP(b))) = extra_size;
   }
-
   GET_ALLOC(HDRP(b)) = 1;
+  return b;
 }
 
 static void extend(size_t s)
@@ -150,10 +156,9 @@ static void extend(size_t s)
    * of the head. 
    */
 
-  int newsize = ALIGN(s);
+  int newsize = ALIGN(s + OVERHEAD);
   current_avail_size = PAGE_ALIGN(newsize);
   void *new_page = mem_map(PAGE_ALIGN(newsize));
-
   new_page += 16;
   GET_ALLOC(HDRP(new_page)) = 1; // prolog header block
   GET_SIZE(HDRP(new_page)) = 32;
@@ -163,26 +168,25 @@ static void extend(size_t s)
 
   GET_SIZE(HDRP(new_page)) = PAGE_ALIGN(newsize) - 48; // sets the free space
   GET_ALLOC(HDRP(new_page)) = 0;
-
+  GET_SIZE(FTRP(new_page)) = PAGE_ALIGN(newsize) - 48;
+  
   GET_ALLOC(HDRP(NEXT_BLKP(new_page))) = 1;
   GET_SIZE(HDRP(NEXT_BLKP(new_page))) = 0;
 
-  if (head == NULL)
+  if (head_free_list == NULL)
   {
-    head = new_page;
-    head->next = NULL;
-    //head_free_list = new_page;
-    //NEXT_BLKP(head_free_list) = NULL;
+    F_SET_PTR(N_FREE_POINTER(new_page), NULL);
+    head_free_list = new_page;
   }
   
   else{
     void* bp = head_free_list;
-    while (NEXT_BLKP(bp) != NULL)
+    while (bp != NULL)
     {
       bp = NEXT_BLKP(bp);
     }
-    NEXT_BLKP(bp) = new_page;
-  
+    bp = new_page;
+  }
 }
 
 /*
